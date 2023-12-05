@@ -1,2 +1,6 @@
 # voiceactor-graph
-extract the appearances of Japanese voice actors from Wikipedia
+日本の声優さんたちが出演したテレビアニメと劇場アニメをグラフデータ化することで、「ある声優さんが出演した作品に出演している声優さん」といった検索を可能にします。
+
+データソースは日本語版Wikipediaのダンプファイルです。
+
+詳細はhttps://rio.st/
