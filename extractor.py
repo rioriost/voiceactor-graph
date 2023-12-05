@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import hashlib
 import os
 import re
 import sys
@@ -25,14 +26,18 @@ prog_title_re = re.compile(r"^\*+ \[\[(.+?)\]\]")
 # Execute a Gremlin query and print results.
 def execute_query(client, query):
     print("\n> {0}\n".format(query))
-    callback = client.submitAsync(query)
-    if callback.result() is not None:
-        print("\tExecuted this query:\n\t{0}".format(
-            callback.result().all().result()))
-    else:
-        print("Something went wrong with this query: {0}".format(query))
-    print("\n")
-    print("\tResponse status_attributes:\n\t{0}\n".format(callback.result().status_attributes))
+    try:
+        callback = client.submitAsync(query)
+        if callback.result() is not None:
+            print("\tExecuted this query:\n\t{0}".format(callback.result().all().result()))
+        else:
+            print("Something went wrong with this query: {0}".format(query))
+        print("\n")
+        print("\tResponse status_attributes:\n\t{0}\n".format(callback.result().status_attributes))
+    except GremlinServerError as e:
+        if e.status_code == 409:
+            print("\tAlready exists\n")
+            pass
 
 # Read the XML file and return a generator that yields the text of each page.
 def file_read_generator(file_path: str, start_sep: str = '<page>', end_sep: str = '</page>') -> str:
@@ -70,14 +75,14 @@ def extract_appearance_list(content: str) -> list:
             m = prog_title_re.search(line)
             if m != None:
                 g = m.groups()
-                appearance_list.append(g[0].replace("'", "&quot;"))
+                appearance_list.append(g[0].replace("'", "&quot;").replace("/", "&#047;").replace("?", "&#063;"))
     return list(set(appearance_list))
 
 def main():
     # Create a Gremlin client.
     gr_client = client.Client('wss://riovagremlin.gremlin.cosmos.azure.com:443//', 'g',
                            username="/dbs/voice-actors/colls/actors-graph",
-                           password="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx==",
+                           password="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx==",
                            message_serializer=serializer.GraphSONSerializersV2d0()
                            )
     # Drop the entire Graph
@@ -90,21 +95,15 @@ def main():
             actor = page_dict['page']['title'].replace("'", "&quot;")
             # extract appearance list
             appearance_list = extract_appearance_list(page_dict['page']['revision']['text']['#text'])
-            print(appearance_list)
             # Firstly add vertex of voice actor
             query = "g.addV('actor').property('id', '{0}').property('label', '{1}').property('pk', 'pk')".format(actor, actor)
             execute_query(gr_client, query)
-            # Next, add vertices of appearance
+            # Next, add vertices of appearance and edges
             for appearance in appearance_list:
-                try:
-                    query = "g.addV('appearance').property('id', '{0}').property('label', '{1}').property('pk', 'pk')".format(appearance, appearance)
-                    execute_query(gr_client, query)
-                except GremlinServerError as e:
-                    cosmos_status_code = e.status_attributes["x-ms-status-code"]
-                    pass
-            # Next, add edges
-            for appearance in appearance_list:
-                query = "g.V('{0}').addE('has').to(g.V('{1}'))".format(actor, appearance)
+                id = hashlib.md5(appearance.encode()).hexdigest()
+                query = "g.addV('appearance').property('id', '{0}').property('label', '{1}').property('pk', 'pk')".format(id, appearance)
+                execute_query(gr_client, query)
+                query = "g.V('{0}').addE('has').to(g.V('{1}'))".format(actor, id)
                 execute_query(gr_client, query)
 
 if __name__ == "__main__":
