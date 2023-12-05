@@ -55,6 +55,12 @@ def file_read_generator(file_path: str, start_sep: str = '<page>', end_sep: str 
                     in_page = True
                     txt += line
 
+def escape_appearance(appearance: str) -> str:
+    result = appearance.replace("'", '’')
+    result = result.replace('/', '／')
+    result = result.replace('?', '？')
+    return result
+
 # Extract the appearance list from the text of a Wikipedia page.
 def extract_appearance_list(content: str) -> list:
     is_appear = False
@@ -75,14 +81,14 @@ def extract_appearance_list(content: str) -> list:
             m = prog_title_re.search(line)
             if m != None:
                 g = m.groups()
-                appearance_list.append(g[0].replace("'", "&quot;").replace("/", "&#047;").replace("?", "&#063;"))
+                appearance_list.append(g[0].replace("'", '&quot;'))
     return list(set(appearance_list))
 
 def main():
     # Create a Gremlin client.
     gr_client = client.Client('wss://riovagremlin.gremlin.cosmos.azure.com:443//', 'g',
                            username="/dbs/voice-actors/colls/actors-graph",
-                           password="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx==",
+                           password="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx==",
                            message_serializer=serializer.GraphSONSerializersV2d0()
                            )
     # Drop the entire Graph
@@ -100,10 +106,10 @@ def main():
             execute_query(gr_client, query)
             # Next, add vertices of appearance and edges
             for appearance in appearance_list:
-                id = hashlib.md5(appearance.encode()).hexdigest()
-                query = "g.addV('appearance').property('id', '{0}').property('label', '{1}').property('pk', 'pk')".format(id, appearance)
+                escaped_appearance = escape_appearance(appearance)
+                query = "g.addV('appearance').property('id', '{0}').property('label', '{1}').property('pk', 'pk')".format(escaped_appearance, appearance)
                 execute_query(gr_client, query)
-                query = "g.V('{0}').addE('has').to(g.V('{1}'))".format(actor, id)
+                query = "g.V('{0}').addE('has').to(g.V('{1}'))".format(actor, escaped_appearance)
                 execute_query(gr_client, query)
 
 if __name__ == "__main__":
